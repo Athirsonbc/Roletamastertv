@@ -3,12 +3,16 @@ import fs from 'fs';
 import path from 'path';
 import cors from 'cors';
 import bodyParser from 'body-parser';
+import { fileURLToPath } from 'url';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const DATA_DIR = './data';
 const DATA_FILE = `${DATA_DIR}/data.json`;
-const ADMIN_USER = { username: 'admin', password: 'Barbosa!00' }; // ✅ Usuário padrão
+const ADMIN_USER = { username: 'admin', password: 'Barbosa!00' };
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -206,4 +210,9 @@ app.post('/api/spin', (req, res) => {
   res.json({ prize_id: selectedPrize.id, prize_title: selectedPrize.title });
 });
 
-app.listen(PORT, () => console.log(`🚀 Servidor rodando em http://localhost:${PORT}`));
+// ======== SERVE FRONTEND (Render) ========
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => console.log(`🚀 Servidor rodando na porta ${PORT}`));
