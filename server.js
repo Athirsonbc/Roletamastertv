@@ -9,6 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = './data';
 const DATA_FILE = `${DATA_DIR}/data.json`;
+const BACKUP_FILE = `${DATA_DIR}/backup.json`;
 const ADMIN_USER = { username: 'admin', password: 'Barbosa!00' };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,14 +19,25 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
+// ======== CRIA DIRETÓRIO E RESTAURA SE PRECISAR =========
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+// Se não existir o data.json, restaura a partir do backup
 if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify({
-    indicators: [],
-    coupons: [],
-    prizes: [],
-    spins: []
-  }, null, 2));
+  if (fs.existsSync(BACKUP_FILE)) {
+    fs.copyFileSync(BACKUP_FILE, DATA_FILE);
+    console.log('♻️ Banco restaurado a partir do backup.');
+  } else {
+    const initialData = {
+      indicators: [],
+      coupons: [],
+      prizes: [],
+      spins: []
+    };
+    fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2));
+    fs.writeFileSync(BACKUP_FILE, JSON.stringify(initialData, null, 2));
+    console.log('🆕 Banco inicial criado.');
+  }
 }
 
 // ======== FUNÇÕES DE LEITURA E ESCRITA =========
@@ -42,6 +54,7 @@ function readData() {
 function writeData(data) {
   try {
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    fs.copyFileSync(DATA_FILE, BACKUP_FILE);
   } catch (err) {
     console.error('❌ Erro ao salvar banco de dados:', err);
   }
@@ -60,7 +73,6 @@ app.post('/api/admin/login', (req, res) => {
 
 // ======== PRÊMIOS =========
 app.get('/api/admin/prizes', (req, res) => {
-  console.log('🔄 Carregando prêmios...');
   const data = readData();
   res.json(data.prizes);
 });
@@ -157,39 +169,21 @@ app.get('/api/admin/spins', (req, res) => {
 
 // ======== ROTA PÚBLICA PARA ROLETA ========
 app.get('/api/prizes', (req, res) => {
-  console.log('🎯 Solicitando prêmios públicos...');
-  try {
-    const data = readData();
-    res.json(data.prizes);
-  } catch (err) {
-    console.error('❌ Erro ao carregar prêmios públicos:', err);
-    res.status(500).json({ message: 'Erro ao carregar prêmios públicos.' });
-  }
+  const data = readData();
+  res.json(data.prizes);
 });
 
 // ======== ROLETA =========
 app.post('/api/spin', (req, res) => {
   const { coupon } = req.body;
   const data = readData();
-
-  console.log(`🎡 Giro solicitado com cupom: ${coupon}`);
-
   const c = data.coupons.find(cc => cc.code === coupon);
-  if (!c) {
-    console.warn('⚠️ Cupom inválido ou não encontrado');
-    return res.status(400).json({ message: 'Cupom inválido' });
-  }
-
-  if (c.used) {
-    console.warn('⚠️ Cupom já utilizado');
-    return res.status(400).json({ message: 'Cupom já utilizado' });
-  }
+  if (!c) return res.status(400).json({ message: 'Cupom inválido' });
+  if (c.used) return res.status(400).json({ message: 'Cupom já utilizado' });
 
   const availablePrizes = data.prizes.filter(p => parseInt(p.level) === c.level);
-  if (availablePrizes.length === 0) {
-    console.warn(`⚠️ Nenhum prêmio disponível para o nível ${c.level}`);
+  if (availablePrizes.length === 0)
     return res.status(400).json({ message: 'Nenhum prêmio disponível para este nível' });
-  }
 
   const selectedPrize = availablePrizes[Math.floor(Math.random() * availablePrizes.length)];
   c.used = true;
@@ -204,13 +198,11 @@ app.post('/api/spin', (req, res) => {
 
   data.spins.push(newSpin);
   writeData(data);
-
   console.log(`🏆 Cupom ${c.code} ganhou o prêmio "${selectedPrize.title}" (Nível ${c.level})`);
-
   res.json({ prize_id: selectedPrize.id, prize_title: selectedPrize.title });
 });
 
-// ======== SERVE FRONTEND (Render) ========
+// ======== FRONTEND (Render) ========
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
